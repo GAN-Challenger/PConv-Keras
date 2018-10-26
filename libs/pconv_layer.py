@@ -57,12 +57,48 @@ class PConv2D(Conv2D):
         # Both image and mask must be supplied
         if type(inputs) is not list or len(inputs) != 2:
             raise Exception('PartialConvolution2D must be called on a list of two tensors [img, mask]. Instead got: ' + str(inputs))
-            
+           
+        #compute the sum M 
+        mask_sum = K.conv2d(
+            inputs[1], self.kernel_mask, 
+            strides=self.strides,
+            padding=self.padding,            
+            data_format=self.data_format,
+            dilation_rate=self.dilation_rate
+        )
+        #as the div 0 is exists
+        #so add 1 on 0
+        mask_sum_bias = K.cast(K.lesser_equal(mask_sum, 0), 'float32')
+        #update the mask
+        mask_output = K.cast(K.greater(mask_sum, 0), 'float32')
+        #add 1
+        mask_sum = mask_sum + mask_sum_bias
+       
+        #compute the image 
+        img_output = K.conv2d(
+            (inputs[0]*inputs[1])/mask_sum, self.kernel, 
+            strides=self.strides,
+            padding=self.padding,
+            data_format=self.data_format,
+            dilation_rate=self.dilation_rate
+        )
+        
+        if self.use_bias
+            img_output = K.bias_add(
+                img_output,
+                self.bias,
+                data_format=self.data_format)
+            #img_output = img_output*mask[1]
+	
+        if self.activation is not None:
+            img_output = self.activation(img_output)
+        
         # Create normalization. Slight change here compared to paper, using mean mask value instead of sum
+        """
         normalization = K.mean(inputs[1], axis=[1,2], keepdims=True)
         normalization = K.repeat_elements(normalization, inputs[1].shape[1], axis=1)
         normalization = K.repeat_elements(normalization, inputs[1].shape[2], axis=2)
-
+        
         # Apply convolutions to image
         img_output = K.conv2d(
             (inputs[0]*inputs[1]) / normalization, self.kernel, 
@@ -94,7 +130,7 @@ class PConv2D(Conv2D):
         # Apply activations on the image
         if self.activation is not None:
             img_output = self.activation(img_output)
-            
+        """    
         return [img_output, mask_output]
     
     def compute_output_shape(self, input_shape):
